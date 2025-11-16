@@ -1,0 +1,44 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: avito-db
+    environment:
+      POSTGRES_DB: avito
+      POSTGRES_USER: avito
+      POSTGRES_PASSWORD: avito
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U avito -d avito"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrator:
+    image: postgres:16-alpine
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ../migrations:/migrations:ro
+    environment:
+      PGPASSWORD: avito
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "psql -h db -U avito -d avito -f /migrations/001_init.sql &&
+       psql -h db -U avito -d avito -f /migrations/002_constraints.sql"
+
+  app:
+    build:
+      context: ..
+      dockerfile: deployments/Dockerfile
+    container_name: avito-app
+    environment:
+      DB_CONN: postgres://avito:avito@db:5432/avito?sslmode=disable
+    ports:
+      - "8080:8080"
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
